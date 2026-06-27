@@ -33,7 +33,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Users, Link, Copy, Pencil, Trash2, X, CheckCircle, Clock, AlertCircle, Ban } from "lucide-react";
+import { ArrowLeft, Plus, Users, Link, Copy, Pencil, Trash2, X, CheckCircle, Clock, AlertCircle, Ban, QrCode, Loader2 } from "lucide-react";
 
 interface SubscriptionPlan {
   id: number;
@@ -64,6 +64,9 @@ interface Subscription {
   createdAt: string;
   nextChargeAt: string | null;
   lastChargeAt: string | null;
+  pixQrCode: string | null;
+  pixPayload: string | null;
+  pixExpiresAt: string | null;
 }
 
 function statusBadge(status: string) {
@@ -91,6 +94,8 @@ export default function AdminSubscriptions() {
   const [deletingPlan, setDeletingPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [cancellingSubscription, setCancellingSubscription] = useState<Subscription | null>(null);
+  const [qrCodeModal, setQrCodeModal] = useState<{ pixQrCode: string; pixPayload: string; pixExpiresAt: string | null } | null>(null);
+  const [generatingQrFor, setGeneratingQrFor] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"plans" | "subscribers">("plans");
 
   const [planForm, setPlanForm] = useState({
@@ -178,6 +183,35 @@ export default function AdminSubscriptions() {
       toast({ title: "Plano removido com sucesso!" });
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  // Gerar QR Code para assinatura pendente
+  const generateQrCode = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/admin/subscriptions/${id}/generate-qrcode`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Erro ao gerar QR Code");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/subscriptions"] });
+      if (selectedPlan) {
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/subscription-plans", selectedPlan.id, "subscribers"] });
+      }
+      setGeneratingQrFor(null);
+      if (data.pixQrCode) {
+        setQrCodeModal({ pixQrCode: data.pixQrCode, pixPayload: data.pixPayload, pixExpiresAt: data.pixExpiresAt });
+        toast({ title: "QR Code gerado com sucesso!" });
+      } else {
+        toast({ title: "Autorização criada", description: "QR Code não disponível no momento." });
+      }
+    },
+    onError: (e: Error) => {
+      setGeneratingQrFor(null);
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    },
   });
 
   // Cancelar assinatura
@@ -386,17 +420,35 @@ export default function AdminSubscriptions() {
                             : "—"}
                         </TableCell>
                         <TableCell>
-                          {sub.status !== "CANCELLED" && sub.status !== "EXPIRED" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 hover:text-red-700"
-                              onClick={() => setCancellingSubscription(sub)}
-                            >
-                              <X className="w-3 h-3 mr-1" />
-                              Cancelar
-                            </Button>
-                          )}
+                          <div className="flex gap-2">
+                            {sub.status === "PENDING" && !sub.pixQrCode && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-blue-600 hover:text-blue-700"
+                                disabled={generatingQrFor === sub.id}
+                                onClick={() => { setGeneratingQrFor(sub.id); generateQrCode.mutate(sub.id); }}
+                              >
+                                {generatingQrFor === sub.id ? (
+                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                ) : (
+                                  <QrCode className="w-3 h-3 mr-1" />
+                                )}
+                                Gerar QR
+                              </Button>
+                            )}
+                            {sub.status !== "CANCELLED" && sub.status !== "EXPIRED" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={() => setCancellingSubscription(sub)}
+                              >
+                                <X className="w-3 h-3 mr-1" />
+                                Cancelar
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -496,6 +548,49 @@ export default function AdminSubscriptions() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Modal: QR Code gerado */}
+      <Dialog open={!!qrCodeModal} onOpenChange={(open) => { if (!open) setQrCodeModal(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>QR Code PIX Automático</DialogTitle>
+          </DialogHeader>
+          {qrCodeModal && (
+            <div className="flex flex-col items-center gap-4">
+              <img
+                src={`data:image/png;base64,${qrCodeModal.pixQrCode}`}
+                alt="QR Code PIX"
+                className="w-52 h-52 border rounded"
+              />
+              <div className="w-full">
+                <p className="text-xs text-gray-500 mb-1">Código copia e cola:</p>
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={qrCodeModal.pixPayload}
+                    className="flex-1 text-xs border rounded px-2 py-1 bg-gray-50 truncate"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { navigator.clipboard.writeText(qrCodeModal.pixPayload); toast({ title: "Copiado!" }); }}
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+              {qrCodeModal.pixExpiresAt && (
+                <p className="text-xs text-gray-400">
+                  Válido até: {new Date(qrCodeModal.pixExpiresAt).toLocaleString("pt-BR")}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQrCodeModal(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmar cancelar assinatura */}
       <AlertDialog open={!!cancellingSubscription} onOpenChange={(open) => { if (!open) setCancellingSubscription(null); }}>

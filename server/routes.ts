@@ -2368,6 +2368,67 @@ export async function registerRoutes(
     }
   });
 
+  // Regenerar QR Code PIX para assinatura pendente sem QR Code
+  app.post("/api/admin/subscriptions/:id/generate-qrcode", requireAuth, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const sub = await storage.getSubscription(id);
+      if (!sub) return res.status(404).json({ message: "Assinatura não encontrada" });
+      if (sub.status === 'CANCELLED') return res.status(400).json({ message: "Assinatura cancelada não pode gerar QR Code" });
+      if (sub.status === 'ACTIVE') return res.status(400).json({ message: "Assinatura já ativa" });
+
+      const plan = await storage.getSubscriptionPlan(sub.planId);
+      if (!plan) return res.status(404).json({ message: "Plano não encontrado" });
+
+      const payConfigured = await isConfigured(plan.workspaceId);
+      if (!payConfigured) return res.status(400).json({ message: "Pagamento não configurado" });
+
+      // Se já tem autorização no Asaas, apenas recria o QR Code via nova autorização
+      // Se não tem customer, cria um novo
+      let asaasCustomerId = sub.asaasCustomerId;
+      if (!asaasCustomerId) {
+        const customer = await createCustomer(sub.name, sub.cpf, sub.phone || '', plan.workspaceId);
+        asaasCustomerId = customer.id;
+        await storage.updateSubscription(id, { asaasCustomerId });
+      }
+
+      const dueDate = calcNextDueDate(plan.billingDay);
+
+      // Cria nova autorização PIX automático
+      const auth = await createPixAutomaticAuthorization({
+        customerId: asaasCustomerId,
+        value: Number(plan.value),
+        description: `Assinatura ${plan.name}`,
+        startDate: dueDate,
+        contractId: `plan-${plan.id}-${id}`,
+        workspaceId: plan.workspaceId,
+      });
+
+      const pixQrCode = auth.encodedImage || null;
+      const pixPayload = auth.payload || null;
+      const pixExpiresAt = auth.immediateQrCode?.expirationDate ? new Date(auth.immediateQrCode.expirationDate) : null;
+
+      await storage.updateSubscription(id, {
+        asaasCustomerId,
+        asaasAuthorizationId: auth.id,
+        asaasAuthorizationStatus: auth.status || 'PENDING',
+        pixQrCode,
+        pixPayload,
+        pixExpiresAt,
+      });
+
+      res.json({
+        success: true,
+        pixQrCode,
+        pixPayload,
+        pixExpiresAt,
+        message: pixQrCode ? 'QR Code gerado com sucesso' : 'Autorização criada, mas sem QR Code',
+      });
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
+  });
+
   // ===== CRON JOB: COBRANÇAS MENSAIS AUTOMÁTICAS =====
   // Este endpoint deve ser chamado diariamente por um serviço externo (ex: cron-job.org)
   // URL: POST /api/cron/billing?secret=CRON_SECRET
