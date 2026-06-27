@@ -2482,18 +2482,20 @@ export async function registerRoutes(
             customerId: customer.id,
             value: Number(plan.value),
             description: `Assinatura ${plan.name}`,
-            dueDate,
+            startDate: dueDate,
+            contractId: `plan-${plan.id}`,
             workspaceId: plan.workspaceId,
           });
 
           asaasAuthorizationId = auth.id;
           asaasAuthorizationStatus = auth.status || 'PENDING';
 
-          if (auth.pixQrCode) {
-            pixQrCode = auth.pixQrCode.encodedImage;
-            pixPayload = auth.pixQrCode.payload;
-            if (auth.pixQrCode.expirationDate) {
-              pixExpiresAt = new Date(auth.pixQrCode.expirationDate);
+          // A resposta retorna immediateQrCode (não pixQrCode)
+          if (auth.immediateQrCode) {
+            pixQrCode = auth.immediateQrCode.encodedImage;
+            pixPayload = auth.immediateQrCode.payload;
+            if (auth.immediateQrCode.expirationDate) {
+              pixExpiresAt = new Date(auth.immediateQrCode.expirationDate);
             }
           }
         } catch (err) {

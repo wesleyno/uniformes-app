@@ -110,42 +110,69 @@ export async function getPayment(
 // ===== PIX AUTOMÁTICO =====
 
 // Cria uma autorização de PIX automático (jornada 3 - QR Code imediato)
+// Endpoint correto: POST /v3/pix/automatic/authorizations
 export async function createPixAutomaticAuthorization(params: {
   customerId: string;
   value: number;
   description: string;
-  dueDate: string; // YYYY-MM-DD - data do primeiro pagamento
+  startDate: string; // YYYY-MM-DD - data de início da vigência
+  contractId: string; // max 35 chars - identificador do contrato/plano
   workspaceId?: number | null;
 }): Promise<{
   id: string;
   status: string;
-  pixQrCode: { encodedImage: string; payload: string; expirationDate: string };
+  immediateQrCode: {
+    encodedImage: string;
+    payload: string;
+    expirationDate: string;
+  };
   conciliationIdentifier: string;
 }> {
-  const { customerId, value, description, dueDate, workspaceId } = params;
+  const { customerId, value, description, startDate, contractId, workspaceId } = params;
   const apiKey = await getApiKey(workspaceId);
   if (!apiKey) throw new Error("Asaas não configurado");
   const base = await getAsaasBase(workspaceId);
 
-  const res = await fetch(`${base}/pix/automaticPayments/authorizations`, {
+  // Limita description e contractId a 35 chars conforme documentação
+  const safeDescription = description.substring(0, 35);
+  const safeContractId = contractId.substring(0, 35);
+
+  const body = {
+    customerId,
+    frequency: "MONTHLY",
+    contractId: safeContractId,
+    startDate,
+    description: safeDescription,
+    value,
+    immediateQrCode: {
+      paymentCreationMode: "MANUAL",
+    },
+  };
+
+  console.log("Asaas createPixAuthorization body:", JSON.stringify(body));
+
+  const res = await fetch(`${base}/pix/automatic/authorizations`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "User-Agent": "NTeamKit/1.0.0",
       access_token: apiKey,
     },
-    body: JSON.stringify({
-      customer: customerId,
-      value,
-      dueDate,
-      description,
-      billingType: "PIX",
-    }),
+    body: JSON.stringify(body),
   });
+
+  const responseText = await res.text();
+  console.log("Asaas createPixAuthorization response status:", res.status);
+  console.log("Asaas createPixAuthorization response body:", responseText);
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`Asaas createPixAuthorization error: ${JSON.stringify(err)}`);
+    let errObj: any = {};
+    try { errObj = JSON.parse(responseText); } catch {}
+    throw new Error(`Asaas createPixAuthorization error ${res.status}: ${responseText}`);
   }
-  return res.json();
+
+  const data = JSON.parse(responseText);
+  return data;
 }
 
 // Cria uma cobrança recorrente vinculada a uma autorização PIX automático
@@ -193,7 +220,7 @@ export async function cancelPixAutomaticAuthorization(
   if (!apiKey) throw new Error("Asaas não configurado");
   const base = await getAsaasBase(workspaceId);
 
-  const res = await fetch(`${base}/pix/automaticPayments/authorizations/${authorizationId}/cancel`, {
+  const res = await fetch(`${base}/pix/automatic/authorizations/${authorizationId}/cancel`, {
     method: "POST",
     headers: { access_token: apiKey },
   });
