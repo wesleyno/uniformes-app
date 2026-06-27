@@ -147,6 +147,7 @@ export async function createPixAutomaticAuthorization(params: {
     immediateQrCode: {
       paymentCreationMode: "MANUAL",
       expirationSeconds: 86400, // 24 horas para o pagador escanear o QR Code
+      originalValue: value, // valor do primeiro pagamento (mesmo valor da assinatura)
     },
   };
 
