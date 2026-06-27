@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, Copy, Loader2, ShieldCheck } from "lucide-react";
+import { CheckCircle, Copy, Loader2, ShieldCheck, QrCode } from "lucide-react";
 
 interface Plan {
   id: number;
@@ -57,6 +57,25 @@ export default function SubscribePage() {
     jerseySize: "",
   });
   const [result, setResult] = useState<SubscriptionResult | null>(null);
+  const [generatingQr, setGeneratingQr] = useState(false);
+
+  async function handleGenerateQr() {
+    if (!result?.id) return;
+    setGeneratingQr(true);
+    try {
+      const res = await fetch(`/api/admin/subscriptions/${result.id}/generate-qrcode`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Erro ao gerar QR Code");
+      if (data.pixQrCode) {
+        setResult(prev => prev ? { ...prev, pixQrCode: data.pixQrCode, pixPayload: data.pixPayload, pixExpiresAt: data.pixExpiresAt, message: "QR Code gerado! Escaneie para autorizar o PIX automático." } : prev);
+        toast({ title: "QR Code gerado com sucesso!" });
+      }
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setGeneratingQr(false);
+    }
+  }
 
   const { data: plan, isLoading, error } = useQuery<Plan>({
     queryKey: ["/api/subscribe", shareId],
@@ -146,6 +165,23 @@ export default function SubscribePage() {
                 R$ {Number(result.value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/mês
               </p>
             </div>
+
+            {!result.pixQrCode && (
+              <div className="text-center">
+                <p className="text-sm text-gray-500 mb-3">O QR Code não foi gerado automaticamente. Clique abaixo para gerar:</p>
+                <Button
+                  onClick={handleGenerateQr}
+                  disabled={generatingQr}
+                  className="w-full"
+                >
+                  {generatingQr ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando QR Code...</>
+                  ) : (
+                    <><QrCode className="w-4 h-4 mr-2" />Gerar QR Code PIX</>
+                  )}
+                </Button>
+              </div>
+            )}
 
             {result.pixQrCode && (
               <div className="text-center space-y-3">
