@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+build/
+.next/
+out/
+# Ignore most of dist but keep the serverless bundle and public assets
+dist/index.cjs
+dist/*.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.cache/
+.replit
+.config/
+.local/
+
+# Uploads
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db
