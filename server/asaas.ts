@@ -121,12 +121,12 @@ export async function createPixAutomaticAuthorization(params: {
 }): Promise<{
   id: string;
   status: string;
+  encodedImage: string;       // QR Code em base64 - nível raiz da resposta
+  payload: string;            // Código copia e cola PIX - nível raiz da resposta
   immediateQrCode: {
-    encodedImage: string;
-    payload: string;
-    expirationDate: string;
+    conciliationIdentifier: string;
+    expirationDate: string;   // Data de expiração do QR Code
   };
-  conciliationIdentifier: string;
 }> {
   const { customerId, value, description, startDate, contractId, workspaceId } = params;
   const apiKey = await getApiKey(workspaceId);

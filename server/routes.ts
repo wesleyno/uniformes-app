@@ -2490,13 +2490,16 @@ export async function registerRoutes(
           asaasAuthorizationId = auth.id;
           asaasAuthorizationStatus = auth.status || 'PENDING';
 
-          // A resposta retorna immediateQrCode (não pixQrCode)
-          if (auth.immediateQrCode) {
-            pixQrCode = auth.immediateQrCode.encodedImage;
-            pixPayload = auth.immediateQrCode.payload;
-            if (auth.immediateQrCode.expirationDate) {
-              pixExpiresAt = new Date(auth.immediateQrCode.expirationDate);
-            }
+          // O Asaas retorna encodedImage e payload no nível raiz da resposta
+          // O objeto immediateQrCode contém apenas conciliationIdentifier e expirationDate
+          if (auth.encodedImage) {
+            pixQrCode = auth.encodedImage;
+          }
+          if (auth.payload) {
+            pixPayload = auth.payload;
+          }
+          if (auth.immediateQrCode?.expirationDate) {
+            pixExpiresAt = new Date(auth.immediateQrCode.expirationDate);
           }
         } catch (err) {
           console.error('Erro ao criar autorização PIX:', err);
